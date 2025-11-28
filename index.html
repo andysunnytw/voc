@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>自訂詞彙學習卡 v8.8 (輸入框加大)</title>
+    <title>自訂詞彙學習卡 v8.8 (穩定修復版)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -56,6 +56,7 @@
             color:var(--text);
             font-weight: 800;
             flex-shrink: 0;
+            text-align: center;
         }
 
         /* 設定與按鈕區塊 */
@@ -72,24 +73,6 @@
             width: 100%; max-width: 760px; padding: 8px; font-weight: 700;
             border: 1px dashed var(--accent); background: #eff6ff; color: var(--accent);
             border-radius: 8px; cursor: pointer; margin-bottom: 5px; flex-shrink: 0;
-        }
-
-        /* 輸入框樣式優化 */
-        .control-group { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
-        input[type=file] { padding: 8px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; width: 100%; }
-        
-        /* **【修改】** 加大文字輸入框 */
-        textarea {
-            width: 100%;
-            height: 200px; /* 從 80px 增加到 200px */
-            border-radius: 8px;
-            padding: 12px;
-            border: 1px solid #d1d5db;
-            font-family: monospace; /* 等寬字體方便對齊 */
-            font-size: 14px;
-            resize: vertical; /* 允許垂直拉伸 */
-            margin-bottom: 10px;
-            line-height: 1.4;
         }
 
         /* 按鈕樣式 */
@@ -228,6 +211,11 @@
         .modal.show { display: flex; }
         .modal-content { background: #fff; padding: 25px; border-radius: 16px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
         
+        /* 輸入框 */
+        .control-group{display:flex;gap:10px;align-items:center; margin-bottom: 10px;}
+        input[type=file]{padding:6px;border-radius:6px; border: 1px solid #d1d5db; background: #f9fafb; width: 100%;}
+        textarea{width:100%;height:120px;border-radius:8px;padding:10px;border:1px solid #d1d5db;font-family:inherit; resize: vertical; margin-bottom: 10px;}
+
         /* RWD & Fullscreen */
         @media(max-width:640px) {
             #word-en { font-size: 40px; }
@@ -258,18 +246,22 @@
                 <button class="small-btn" onclick="deleteDeck()" style="color:red;">🗑️</button>
             </div>
 
-            <label>匯入 (CSV)：</label>
-            <div class="control-group" style="margin-bottom:5px;">
+            <label>方法一：匯入 CSV</label>
+            <div class="control-group">
                 <input type="file" id="csvFileInput" accept=".csv"/>
                 <button class="import-btn" onclick="importCSV()">匯入</button>
             </div>
-            <textarea id="paste-area" placeholder="在此貼上單字 (格式：英文,中文 或 英文[Tab]中文)"></textarea>
-            <div style="display:flex; gap:8px; margin-top:8px;">
+            
+            <label>方法二：貼上單字 (格式：英文,中文)</label>
+            <textarea id="paste-area" placeholder="例如：\napple,蘋果\nbanana,香蕉"></textarea>
+            <div style="display:flex; gap:8px; margin-bottom: 10px;">
                 <button class="import-btn" onclick="importFromTextArea()">貼上匯入</button>
                 <button class="export-btn" onclick="exportUnknownWords()">匯出不會</button>
                 <button class="import-btn challenge-btn" onclick="startErrorQuiz()">🔥 錯題特訓</button>
             </div>
-            <div class="management-btns" style="margin-top:10px; border-top:1px solid #eee; padding-top:10px;">
+            
+            <div class="management-btns" style="border-top:1px solid #eee; padding-top:10px;">
+                <button class="small-btn" onclick="loadProgress(true)">📂 重新載入</button>
                 <button class="small-btn" onclick="resetProgress()">🔄 重設進度</button>
                 <button class="small-btn" onclick="clearProgress()">🧹 清除全部</button>
             </div>
@@ -373,22 +365,21 @@
     <audio id="audio-player"></audio>
 
     <script>
-        // --- Data ---
+        // --- Data Variables ---
         let decks = {"Default": []}, currentDeckName = "Default", vocabulary = [], currentIndex = 0;
         let reviewOnlyUnknown = false, isAutoplaying = false;
         let settings = { autoPlay: true, playCount: 1, speed: 3000 };
-
-        // --- Quiz ---
         let quizActive = false, quizList = [], quizIndex = 0, quizScore = 0, quizWrong = 0;
         let quizType = 'e-c-select', currentSpellHintWord = '', spellHintLen = 0;
 
-        // --- Init ---
         const DOM = {};
+
+        // --- Initialization ---
         document.addEventListener('DOMContentLoaded', () => {
             const ids = ['flashcard','word-en','word-phonetic','word-audio-btn','word-cn','word-definition',
                          'audio-player','list-modal','word-list','modal-title','deck-select',
                          'count-all','count-known','count-unknown','current-index','total-words','unclassified-count','progress-bar-fill',
-                         'learning-interface','quiz-interface','quiz-question','quiz-options','quiz-feedback','quiz-stats'];
+                         'learning-interface','quiz-interface','quiz-question','quiz-options','quiz-feedback','quiz-stats', 'toggle-setup'];
             ids.forEach(id => DOM[id] = document.getElementById(id));
 
             if(DOM.flashcard) DOM.flashcard.addEventListener('click', flipCard);
@@ -397,19 +388,29 @@
             updateDeckSelectUI();
             displayCard(currentIndex);
             updateStatusDisplay();
+            
+            // Setup Toggle Button
+            if(DOM['toggle-setup']) {
+                DOM['toggle-setup'].textContent = '⚙️ 匯入 & 設定 (點我展開)';
+            }
 
+            // Fullscreen change listener
             document.addEventListener('fullscreenchange', () => {
-                if(!document.fullscreenElement) document.body.classList.remove('fullscreen');
-                else document.body.classList.add('fullscreen');
+                // No specific class toggling needed if we use :fullscreen pseudo-class in CSS
             });
         });
 
         // --- Core Functions ---
         function toggleSetup() {
             const el = document.querySelector('.file-controls');
-            const btn = document.getElementById('toggle-setup');
-            if(el.style.display === 'block') { el.style.display = 'none'; btn.textContent = '⚙️ 匯入 & 設定 (點我展開)'; }
-            else { el.style.display = 'block'; btn.textContent = '⚙️ 匯入 & 設定 (點我收合)'; }
+            const btn = DOM['toggle-setup'];
+            if(el.style.display === 'block') { 
+                el.style.display = 'none'; 
+                if(btn) btn.textContent = '⚙️ 匯入 & 設定 (點我展開)'; 
+            } else { 
+                el.style.display = 'block'; 
+                if(btn) btn.textContent = '⚙️ 匯入 & 設定 (點我收合)'; 
+            }
         }
 
         function loadData() {
@@ -418,7 +419,9 @@
                 if(d) decks = JSON.parse(d);
                 const c = localStorage.getItem('vocab_v8_current');
                 if(c && decks[c]) currentDeckName = c;
-                vocabulary = decks[currentDeckName] || [];
+                // Initialize default if empty
+                if(!decks[currentDeckName]) decks[currentDeckName] = [];
+                vocabulary = decks[currentDeckName];
             } catch(e) { console.error(e); }
         }
 
@@ -461,15 +464,20 @@
             DOM['word-cn'].textContent = w.cn;
             DOM['word-phonetic'].textContent = "...";
             DOM['word-definition'].textContent = "";
+            if(document.getElementById('srs-badge')) {
+                document.getElementById('srs-badge').textContent = "Lv." + (w.srsLevel || 0);
+            }
             
             if(DOM.flashcard) DOM.flashcard.classList.remove('flipped');
             updateStatusDisplay();
 
+            // Fetch Data
             try {
-                const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${w.en}`);
+                const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w.en)}`);
                 if(res.ok) {
                     const data = await res.json();
                     const entry = data[0];
+                    // Phonetic
                     let ph = entry.phonetic || '';
                     if(!ph && entry.phonetics) {
                          const p = entry.phonetics.find(x => x.text);
@@ -477,14 +485,23 @@
                     }
                     DOM['word-phonetic'].textContent = ph;
 
+                    // Audio
                     let audio = null;
                     if(entry.phonetics) {
                         const a = entry.phonetics.find(x => x.audio);
                         if(a) audio = a.audio;
                     }
                     
-                    if(entry.meanings && entry.meanings[0].definitions[0]) {
-                        DOM['word-definition'].textContent = entry.meanings[0].definitions[0].definition;
+                    // Definition
+                    if(entry.meanings) {
+                         let def = '';
+                         for(let m of entry.meanings) {
+                             if(m.definitions && m.definitions[0].definition) {
+                                 def = m.definitions[0].definition;
+                                 break;
+                             }
+                         }
+                         DOM['word-definition'].textContent = def;
                     }
 
                     DOM['word-audio-btn'].onclick = (e) => {
@@ -495,12 +512,19 @@
                     if(settings.autoPlay && !isAutoplaying && !quizActive) {
                          playAudio(w.en, audio);
                     }
+                } else {
+                     // API fail fallback
+                     DOM['word-phonetic'].textContent = "";
+                     DOM['word-audio-btn'].onclick = (e) => { e.stopPropagation(); speakTTS(w.en); };
                 }
-            } catch(e) { DOM['word-phonetic'].textContent = ""; }
+            } catch(e) { 
+                DOM['word-phonetic'].textContent = "";
+                DOM['word-audio-btn'].onclick = (e) => { e.stopPropagation(); speakTTS(w.en); };
+            }
         }
 
         function playAudio(word, url) {
-            const count = parseInt(document.getElementById('audio-play-count').value);
+            const count = parseInt(document.getElementById('audio-play-count').value) || 1;
             let played = 0;
             
             const play = () => {
@@ -509,8 +533,8 @@
                 if(url) {
                     DOM['audio-player'].src = url;
                     DOM['audio-player'].onended = play;
-                    DOM['audio-player'].onerror = () => speakTTS(word, play);
-                    DOM['audio-player'].play();
+                    DOM['audio-player'].onerror = () => speakTTS(word, play); // Fallback to TTS
+                    DOM['audio-player'].play().catch(() => speakTTS(word, play));
                 } else {
                     speakTTS(word, play);
                 }
@@ -519,10 +543,10 @@
         }
 
         function speakTTS(text, callback) {
-            if(!window.speechSynthesis) return callback();
+            if(!window.speechSynthesis) { if(callback) callback(); return; }
             const u = new SpeechSynthesisUtterance(text);
             u.lang = 'en-US';
-            u.onend = callback;
+            if(callback) u.onend = callback;
             window.speechSynthesis.speak(u);
         }
 
@@ -536,7 +560,7 @@
                     loop++;
                 }
                 if(loop < vocabulary.length) displayCard(i);
-                else alert("沒有「不會」的單字了！");
+                else { alert("沒有「不會」的單字了！"); displayCard(currentIndex); }
             } else {
                 displayCard(currentIndex + 1); 
             }
@@ -548,6 +572,11 @@
             if(vocabulary.length === 0) return;
             vocabulary[currentIndex].status = status;
             if(status === 'unknown') vocabulary[currentIndex].errorCount = (vocabulary[currentIndex].errorCount || 0) + 1;
+            
+            // Simple SRS logic
+            if(status === 'known') vocabulary[currentIndex].srsLevel = (vocabulary[currentIndex].srsLevel || 0) + 1;
+            else vocabulary[currentIndex].srsLevel = 0;
+
             saveData();
             nextCard();
         }
@@ -581,18 +610,27 @@
             const lines = txt.split(/\n/);
             let added = 0;
             lines.forEach(l => {
+                // Split by comma OR tab
                 const p = l.split(/,|\t/);
                 if(p.length >= 2) {
-                    const en = p[0].trim(), cn = p[1].trim();
+                    let en = p[0].trim();
+                    let cn = p[1].trim();
+                    // Clean quotes
+                    en = en.replace(/^"|"$/g, '');
+                    cn = cn.replace(/^"|"$/g, '');
+                    
                     if(en && cn && !vocabulary.some(v=>v.en===en)) {
-                        vocabulary.push({en, cn, status: 'unclassified', errorCount: 0});
+                        vocabulary.push({en, cn, status: 'unclassified', errorCount: 0, srsLevel: 0});
                         added++;
                     }
                 }
             });
             if(added > 0) {
-                saveData(); displayCard(0); alert(`匯入 ${added} 個單字`);
+                saveData(); displayCard(0); updateStatusDisplay(); alert(`匯入 ${added} 個單字`);
                 document.getElementById('paste-area').value = '';
+                toggleSetup(); // Auto collapse
+            } else {
+                alert("未找到有效單字格式 (英文,中文)");
             }
         }
         
@@ -631,11 +669,12 @@
             vocabulary = decks[currentDeckName];
             currentIndex = 0;
             displayCard(0);
+            updateStatusDisplay();
             saveData();
         }
         function createNewDeck() {
             const n = prompt("牌組名稱:");
-            if(n && !decks[n]) { decks[n] = []; currentDeckName = n; vocabulary = []; updateDeckSelectUI(); saveData(); displayCard(0); }
+            if(n && !decks[n]) { decks[n] = []; currentDeckName = n; vocabulary = []; updateDeckSelectUI(); saveData(); displayCard(0); updateStatusDisplay(); }
         }
         function deleteDeck() {
             if(Object.keys(decks).length === 1) return alert("不能刪除最後一個牌組");
@@ -643,14 +682,15 @@
                 delete decks[currentDeckName];
                 currentDeckName = Object.keys(decks)[0];
                 vocabulary = decks[currentDeckName];
-                updateDeckSelectUI(); saveData(); displayCard(0);
+                currentIndex = 0;
+                updateDeckSelectUI(); saveData(); displayCard(0); updateStatusDisplay();
             }
         }
         
         function resetProgress() {
              if(confirm("重設進度？")) {
                  vocabulary.forEach(w => w.status = 'unclassified');
-                 saveData(); displayCard(0);
+                 saveData(); displayCard(0); updateStatusDisplay();
              }
         }
         function clearProgress() {
@@ -661,12 +701,17 @@
         function toggleReviewMode() {
             reviewOnlyUnknown = !reviewOnlyUnknown;
             document.getElementById('review-toggle').textContent = reviewOnlyUnknown ? "🔁 退出複習" : "🔁 只看不會";
-            displayCard(currentIndex);
+            nextCard(); // Jump to next appropriate card
         }
         
         function toggleFullScreen() {
-            if(!document.fullscreenElement) document.documentElement.requestFullscreen();
-            else document.exitFullscreen();
+            if(!document.fullscreenElement) {
+                 if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+                 else if(document.documentElement.webkitRequestFullscreen) document.documentElement.webkitRequestFullscreen(); // Safari
+            } else {
+                 if(document.exitFullscreen) document.exitFullscreen();
+                 else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+            }
         }
         
         function updateSettings() {
@@ -677,7 +722,7 @@
         function toggleAutoplay() {
              if(isAutoplaying) {
                  isAutoplaying = false;
-                 document.getElementById('autoplay-toggle').textContent = "▶️ 自動播放";
+                 document.getElementById('autoplay-toggle').textContent = "▶️ 自動";
              } else {
                  if(vocabulary.length === 0) return;
                  isAutoplaying = true;
@@ -745,6 +790,7 @@
              const qEl = DOM['quiz-question'];
              const oEl = DOM['quiz-options'];
              oEl.innerHTML = '';
+             document.getElementById('spell-hint-display').textContent = ''; // Clear hint
              
              let qText = '', ans = '';
              if(quizType === 'e-c-select') { qText = w.en; ans = w.cn; }
@@ -754,10 +800,19 @@
              qEl.innerHTML = `<div style="font-size:14px;color:#666">題目 ${quizIndex+1}/${quizList.length}</div><div style="font-size:32px;color:blue;margin:10px 0">${qText}</div>`;
              
              if(quizType === 'e-c-spell') {
-                  oEl.innerHTML = `<input type="text" id="spell-input" style="font-size:20px;padding:5px;width:80%"><button onclick="checkAnswer()">送出</button>`;
+                  // Spell input layout
+                  oEl.innerHTML = `
+                      <input type="text" id="spell-input" autocomplete="off" style="font-size:20px;padding:8px;width:100%;border:1px solid #ccc;border-radius:6px;margin-bottom:10px;">
+                      <div style="display:flex;gap:10px;">
+                          <button class="small-btn" onclick="showSpellHint()">💡 提示</button>
+                          <button class="import-btn" style="flex-grow:1;" onclick="checkAnswer()">送出</button>
+                      </div>
+                  `;
+                  currentSpellHintWord = w.en;
+                  spellHintRevealedCount = 0;
                   setTimeout(()=>document.getElementById('spell-input').focus(), 100);
              } else {
-                  // Options
+                  // Options layout
                   const opts = [ans];
                   while(opts.length < 3 && vocabulary.length >= 3) {
                       const r = vocabulary[Math.floor(Math.random() * vocabulary.length)];
@@ -773,14 +828,26 @@
                   });
              }
         }
+        
+        function showSpellHint() {
+             if(spellHintRevealedCount < currentSpellHintWord.length) {
+                 spellHintRevealedCount++;
+                 document.getElementById('spell-hint-display').textContent = currentSpellHintWord.substring(0, spellHintRevealedCount);
+                 document.getElementById('spell-input').focus();
+             }
+        }
 
         function checkAnswer(val) {
-             if(!val) val = document.getElementById('spell-input').value;
+             if(!val) { // Spelling case
+                 const inp = document.getElementById('spell-input');
+                 if(inp) val = inp.value;
+             }
+             
              const w = quizList[quizIndex];
              let correct = false;
              
              if(quizType === 'e-c-select') correct = (val === w.cn);
-             else correct = (val.toLowerCase().trim() === w.en.toLowerCase().trim());
+             else correct = (val && val.toLowerCase().trim() === w.en.toLowerCase().trim());
              
              const fb = document.getElementById('quiz-feedback');
              if(correct) {
@@ -802,6 +869,9 @@
         }
 
         document.addEventListener('keydown', e => {
+             if(document.querySelector('.modal.show')) return;
+             if(e.target.id === 'paste-area') return;
+             
              if(quizActive) {
                  if(e.key === 'Enter' && quizType === 'e-c-spell') checkAnswer();
                  return;
